@@ -5,7 +5,6 @@ from datetime import datetime
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=3, max_length=100)
-    userId: int
     description: Optional[str] = Field(None, max_length=500)
     priority: Optional[int] = Field(1, ge=1, le=5)
     is_done: bool = False
@@ -50,7 +49,7 @@ class TaskResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    id: int
+
     username: str
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=30)
@@ -68,7 +67,7 @@ class UserInDB(BaseModel):
     id: int
     username: str
     email: EmailStr
-    password: str
+    hashed_password: str
     role: str = 'user'
 
 
@@ -77,6 +76,10 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: str
+
+
+class UserListResponse(BaseModel):
+    users: list[UserResponse]
 
 
 class Token(BaseModel):

@@ -4,17 +4,15 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query, Response, Depends
 
 from src.auth import get_current_user
+from src.repositories.tasks_repo import tasks_db, get_task_by_id
 from src.schemas import TaskResponse, TaskCreate, TaskUpdate, TaskToDone, UserInDB
+from src.repositories.tasks_repo import repo_create_task
+from src.services.task_rules import validate_task_business_rules
 
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"],
 )
-
-tasks_db: dict[int, dict] = {}
-next_id: int = 1
-
-
 
 
 @router.get('/', response_model=List[TaskResponse])
@@ -33,10 +31,11 @@ async def get_tasks(
     return tasks[offset:offset + limit]
 
 
-@router.get('/my', response_model=TaskResponse, summary='Получить мои задачи')
+@router.get('/my', response_model=List[TaskResponse], summary='Получить мои задачи')
 async def get_my_tasks(current_user: UserInDB =  Depends(get_current_user)):
     tasks = [
-        task for task in tasks_db.values() if task['owner_username'] == current_user.username
+        task for task in tasks_db.values()
+        if task.get('owner_username') == current_user.username or task.get('user_id') == current_user.id
     ]
 
     return tasks
@@ -44,23 +43,19 @@ async def get_my_tasks(current_user: UserInDB =  Depends(get_current_user)):
 
 @router.post('/', response_model=TaskResponse, status_code=201)
 async def create_task(task: TaskCreate, current_user: UserInDB = Depends(get_current_user)):
-
-
-    global next_id
     now = datetime.now(timezone.utc)
     task_data = task.model_dump()
-    task_data['id'] = next_id
-    task_data['userId'] = current_user.id
+    validate_task_business_rules(task_data=task_data)
+    task_data['user_id'] = current_user.id
     task_data['created_at'] = now
     task_data['updated_at'] = now
-    tasks_db[next_id] = task_data
-    next_id += 1
-    return task_data
+
+    return repo_create_task(task_data)
 
 
 @router.put('/{task_id}', response_model=TaskResponse)
 async def update_task(task_id: int, task: TaskUpdate):
-    existing_task = tasks_db.get(task_id)
+    existing_task = get_task_by_id(task_id)
     if not existing_task:
         raise HTTPException(status_code=404, detail="Task not found")
 

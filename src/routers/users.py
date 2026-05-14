@@ -1,47 +1,46 @@
-from typing import List
+import os
 from fastapi import APIRouter, HTTPException
-from src.schemas import UserCreate, UserInDB, UserResponse
+
+from src.auth import hash_password
+from src.repositories.users_repo import (
+    create_user,
+    get_user_by_email,
+    get_user_by_username,
+    seed_admin,
+    users_db,
+)
+from src.schemas import UserCreate, UserResponse
 
 router = APIRouter(
     prefix='/users',
     tags=['Пользователи']
 )
 
-users_db: dict[str, UserInDB] = {
-    'admin': UserInDB(
-        id = 1,
-        username='admin',
-        email='admin@inbox.com',
-        password='admin123',
-        role='admin'
-    )
-}
-
-ID: int = 1
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
+seed_admin(hashed_password=hash_password(ADMIN_PASSWORD))
 
 
 @router.post('/register', status_code=201, summary='Зарегистрировать пользователя')
 async def register_user(user_data: UserCreate):
-    if user_data.username in users_db:
+    if get_user_by_email(user_data.email) is not None:
         raise HTTPException(
             status_code=409,
             detail=f'Пользователь {user_data.username} уже существутет'
         )
-    global ID
-    ID += 1
-    user = UserInDB(
-        id = ID,
+    if get_user_by_username(user_data.username) is not None:
+        raise HTTPException(
+            status_code=400,
+            detail='Username already exists'
+        )
+    user = create_user(
         username=user_data.username,
         email=user_data.email,
-        password=user_data.password,
+        hashed_password=hash_password(user_data.password),
         role='user'
     )
-    users_db[user_data.username] = user
-
     return user
 
 
-@router.get('/', response_model=List[UserResponse], summary='Получить список пользователей')
+@router.get('/', response_model=list[UserResponse], summary='Получить список пользователей')
 async def get_users():
     return list(users_db.values())
-

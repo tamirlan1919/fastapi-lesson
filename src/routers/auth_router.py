@@ -8,7 +8,7 @@ from src.schemas import Token
 router = APIRouter(prefix='/auth', tags=['Auth'])
 
 
-@router.post('/token', response_model=Token, summary="Получить JWT Token")
+@router.post('/login', response_model=Token, summary="Получить JWT Token")
 async def login_for_access_token(
         form_data: OAuth2PasswordRequestForm = Depends()
 ):
