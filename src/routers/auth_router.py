@@ -2,7 +2,10 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.auth import ACCESS_TOKEN_EXPIRE_MINUTES, authenticate_user, create_access_token
+from src.database import get_async_session
 from src.schemas import Token
 
 router = APIRouter(prefix='/auth', tags=['Auth'])
@@ -10,11 +13,14 @@ router = APIRouter(prefix='/auth', tags=['Auth'])
 
 @router.post('/login', response_model=Token, summary="Получить JWT Token")
 async def login_for_access_token(
-        form_data: OAuth2PasswordRequestForm = Depends()
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        session: AsyncSession = Depends(get_async_session)
+
 ):
-    user = authenticate_user(
+    user = await authenticate_user(
         username=form_data.username,
-        password=form_data.password
+        password=form_data.password,
+        session=session
     )
 
     if user is None:

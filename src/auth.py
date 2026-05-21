@@ -10,8 +10,11 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 
-from src.repositories.users_repo import get_user_by_username, users_db
+from src.database import get_async_session
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.schemas import UserInDB
+from src.repositories.users_repo import UserRepository
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
@@ -72,19 +75,23 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
 
 
-def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
-    user = get_user_by_username(username)
-
-    if user is None:
-        return None
+async def authenticate_user(username: str, password: str, session: AsyncSession) -> Optional[UserInDB]:
+    repo = UserRepository(session)
+    user = await repo.get_user_by_username(username=username)
 
     if not verify_password(password, user.hashed_password):
         return None
 
-    return user
+    return UserInDB(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password
+    )
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
+async def get_current_user(token: str = Depends(oauth2_scheme),
+                           session: AsyncSession = Depends(get_async_session)) -> UserInDB:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail='Не удалость проверить токен',
@@ -100,13 +107,18 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     if username is None:
         raise credentials_exception
 
-    user = users_db.get(username)
-    print(users_db)
+    repo = UserRepository(session)
+    user = await repo.get_user_by_username(username=username)
 
     if user is None:
         raise credentials_exception
 
-    return user
+    return UserInDB(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password
+    )
 
 
 def require_role(required_role: str):
