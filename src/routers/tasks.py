@@ -9,6 +9,9 @@ from src.database import get_async_session
 from src.repositories.tasks_repo import TaskRepository
 from src.schemas import TaskResponse, TaskCreate, TaskUpdate, TaskToDone, UserInDB
 from src.services.task_rules import validate_task_business_rules
+from redis.asyncio import Redis
+from src.redis_client import get_redis
+from src.services.cachce_service import CacheService
 
 
 router = APIRouter(
@@ -24,16 +27,23 @@ async def get_tasks(
         limit: int = Query(10, ge=1, le=100, description="Limit the number of tasks returned"),
         offset: int = Query(0, ge=0, description="Number of tasks to skip before starting to collect the result set"),
         current_user: UserInDB = Depends(get_current_user),
-        session: AsyncSession = Depends(get_async_session)
+        session: AsyncSession = Depends(get_async_session),
+        redis: Redis = Depends(get_redis)
 
 ):
+    cahce = CacheService(redis)
+    cached_tasks = await cahce.get_tasks(current_user.id)
+    if cached_tasks is not None:
+        return cached_tasks
+
     repo = TaskRepository(session)
-    return await repo.get_all_tasks_for_user(
-        owner_id=current_user.id,
-        is_done=is_done,
-        limit=limit,
-        offset=offset
-    )
+    tasks = await repo.get_all_tasks_for_user(owner_id=current_user.id,
+                                              is_done=is_done,
+                                              priority=priority,
+                                              limit=limit
+                                              ,offset=offset)
+    await cahce.set_tasks(user_id=current_user.id, tasks=tasks)
+    return tasks
 
 
 @router.post('/', response_model=TaskResponse, status_code=201)

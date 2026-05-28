@@ -85,3 +85,33 @@ class UserListResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = 'Bearer'
+
+
+class NoteCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    content: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class NoteUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    content: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
+class NoteResponse(BaseModel):
+    id: str
+    title: str
+    content: Optional[str]
+    tags: list[str]
+    created_at: datetime
+
+
+def doc_to_response(doc: dict) -> NoteResponse:
+    return NoteResponse(
+        id=str(doc['_id']),
+        title=doc['title'],
+        content = doc.get('content'),
+        tags = doc.get('tags', []),
+        created_at = doc.get('created_at')
+    )

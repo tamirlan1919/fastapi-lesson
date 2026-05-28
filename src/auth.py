@@ -79,6 +79,9 @@ async def authenticate_user(username: str, password: str, session: AsyncSession)
     repo = UserRepository(session)
     user = await repo.get_user_by_username(username=username)
 
+    if user is None:
+        return None
+
     if not verify_password(password, user.hashed_password):
         return None
 

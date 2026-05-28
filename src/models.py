@@ -14,6 +14,7 @@ class User(Base):
     email: Mapped[str]= mapped_column(String(50), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String())
     is_active: Mapped[bool] = mapped_column(default=True)
+    age: Mapped[Optional[int]] = mapped_column(nullable=True)
     tasks: Mapped[List['Task']] = relationship(back_populates='owner')
 
 
@@ -28,6 +29,7 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     deadline: Mapped[Optional[datetime]]
+    tags: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     owner_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     owner: Mapped[User] = relationship(back_populates='tasks')
