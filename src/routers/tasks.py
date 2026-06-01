@@ -3,15 +3,17 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, Query, Response, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from motor.motor_asyncio import AsyncIOMotorCollection
 from src.auth import get_current_user
-from src.database import get_async_session
+from src.database import get_async_session, get_task_history_collection
 from src.repositories.tasks_repo import TaskRepository
+from src.repositories.task_history import TaskHistory
 from src.schemas import TaskResponse, TaskCreate, TaskUpdate, TaskToDone, UserInDB
 from src.services.task_rules import validate_task_business_rules
 from redis.asyncio import Redis
 from src.redis_client import get_redis
-from src.services.cachce_service import CacheService
+from src.services.cache_service import CacheService
+
 
 
 router = APIRouter(
@@ -46,14 +48,56 @@ async def get_tasks(
     return tasks
 
 
+@router.get('/with-history')
+async def get_tasks_with_history(
+        current_user: UserInDB = Depends(get_current_user),
+        session: AsyncSession = Depends(get_async_session),
+        history_col: AsyncIOMotorCollection = Depends(get_task_history_collection)
+):
+    repo = TaskRepository(session)
+    tasks = await repo.get_all_tasks_for_user(owner_id=current_user.id)
+    if not tasks:
+        return []
+    tasks_ids = [t.id for t in tasks]
+    history =  TaskHistory(history_col)
+    last_events = await history.get_last_events(tasks_ids)
+    return [
+        {
+            'id': t.id,
+            'title': t.title,
+            'priority': t.priority,
+            'is_done': t.is_done,
+            'created_at': str(t.created_at),
+            'last_event': last_events.get(t.id, 'created')
+
+        } for t in tasks
+    ]
+
+
 @router.post('/', response_model=TaskResponse, status_code=201)
 async def create_task(task: TaskCreate,
                       current_user: UserInDB = Depends(get_current_user),
-                      session: AsyncSession = Depends(get_async_session)
+                      session: AsyncSession = Depends(get_async_session),
+                      history_col: AsyncIOMotorCollection = Depends(get_task_history_collection),
+                      redis: Redis = Depends(get_redis)
                       ):
     repo = TaskRepository(session)
-
-    return await repo.create(task_data=task, owner_id=current_user.id)
+    created = await repo.create(task_data=task, owner_id=current_user.id)
+    try:
+        history =  TaskHistory(history_col)
+        await history.log_cretated(
+            task_id=created.id,
+            user_id=current_user.id,
+            snapshot={
+                'title': created.title,
+                'is_done': created.is_done,
+                'deadline': str(created.deadline) if created.deadline else None
+            }
+        )
+    except Exception as e:
+        print(f'Warn task_history log failed: {e}')
+    await CacheService(redis).invalidate_tasks(current_user.id)
+    return created
 
 
 @router.get('/{task_id}', response_model=TaskResponse)

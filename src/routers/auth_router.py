@@ -9,7 +9,7 @@ from src.auth import ACCESS_TOKEN_EXPIRE_MINUTES, authenticate_user, create_acce
 from src.database import get_async_session
 from src.redis_client import get_redis
 from src.schemas import Token
-from src.services.cachce_service import CacheService
+from src.services.cache_service import CacheService
 
 router = APIRouter(prefix='/auth', tags=['Auth'])
 

@@ -19,6 +19,10 @@ engine = create_async_engine(
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 
+def get_task_history_collection() -> AsyncIOMotorCollection:
+    return client['mongo_test']['task_history']
+
+
 def get_notes_collection() -> AsyncIOMotorCollection:
     return client['mongo_test']['notes']
 

@@ -1,7 +1,9 @@
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.models import Task
 from src.schemas import TaskCreate, TaskUpdate
+from fastapi import HTTPException, status
 from typing import List, Optional
 
 
@@ -10,15 +12,22 @@ class TaskRepository:
         self.session = session
 
     async def create(self, task_data: TaskCreate, owner_id:  int) -> Task:
-        task = Task(
-            title=task_data.title,
-            description=task_data.description,
-            priority=task_data.priority,
-            is_done=task_data.is_done,
-            owner_id=owner_id
+        try:
+            async with self.session.begin():
+                task = Task(
+                    title=task_data.title,
+                    description=task_data.description,
+                    priority=task_data.priority,
+                    is_done=task_data.is_done,
+                    owner_id=owner_id
+                    )
+                self.session.add(task)
+        except SQLAlchemyError as e:
+            raise HTTPException(
+                status_code=500,
+                detail='Ошибка создания задачи'
             )
-        self.session.add(task)
-        await self.session.commit()
+
         await self.session.refresh(task)
         return task
 

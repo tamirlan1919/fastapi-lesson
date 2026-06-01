@@ -10,28 +10,33 @@ class CacheService:
         self.redis = redis
 
     @staticmethod
-    def tasks_key(user_id: int) -> str:
-        return f'tasks:user:{user_id}'
+    def tasks_key(user_id: int, is_done=None, prio=None ) -> str:
+        return f'tasks:user:{user_id}:done={is_done}:prio={prio} '
 
     @staticmethod
     def profile_key(user_id: int) -> str:
         return f'user:profile:{user_id}'
 
-    async def get_tasks(self, user_id: int) -> list | None:
-        cached = await self.redis.get(self.tasks_key(user_id))
+    async def get_tasks(self, user_id: int, is_done = None, priority=None) -> list | None:
+        cached = await self.redis.get(self.tasks_key(user_id, is_done, priority))
         return json.loads(cached) if cached else None
 
-    async def set_tasks(self, user_id: int, tasks: list) -> None:
+    async def set_tasks(self, user_id: int, tasks: list, is_done=None, priority=None) -> None:
         #Задачи - Pydantic объекты коверритуем в словари
         serializable = [t.model_dump() if hasattr(t, 'model_dump') else t for t in tasks]
         await self.redis.set(
-            self.tasks_key(user_id),
+            self.tasks_key(user_id, is_done, priority),
             json.dumps(serializable, default=str),
             self.TASKS_TTL
         )
 
+    async def invalidate_tasks(self, user_id: int) -> None:
+        keys = await self.redis.keys(f'tasks:user:{user_id}:*')
+        if keys:
+            await self.redis.delete(*keys)
+
     async def get_profile(self, user_id: int) -> dict | None:
-        cached = await self.redis.get(self.get_profile(user_id))
+        cached = await self.redis.get(self.profile_key(user_id))
         return json.loads(cached) if cached else None
 
     async def set_profile(self, user_id: int, profile: dict) -> None:

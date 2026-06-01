@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 from src.models import User
+from fastapi import HTTPException, status
 
 
 class UserRepository:
@@ -8,10 +10,15 @@ class UserRepository:
         self.session = session
 
     async def create_user(self, username: str, email: str, hashed_password: str) -> User:
-        hashed_password = hashed_password
-        user = User(username=username, email=email, hashed_password=hashed_password)
-        self.session.add(user)
-        await self.session.commit()  # Фиксируем изменения в БД
+        try:
+            async with self.session.begin():
+                user = User(username=username, email=email, hashed_password=hashed_password)
+                self.session.add(user)
+        except SQLAlchemyError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Ошибка создания пользователя'
+            )
         await self.session.refresh(user)  # Подтягиваем данные из бд
         return user
 
@@ -35,8 +42,16 @@ class UserRepository:
 
     async def deactivate_user(self, user_id: int) -> User | None:
         user = await self.get_user_by_id(user_id)
-        if user:
-            user.is_active = False
-            await self.session.commit()
-            await self.session.refresh(user)
+        try:
+            if user:
+                async with self.session.begin():
+                    user.is_active = False
+        except SQLAlchemyError as e:
+            raise HTTPException(
+                status_code=500,
+                detail='Ошибка деактивации пользователя'
+
+            )
+
+        await self.session.refresh(user)
         return user
