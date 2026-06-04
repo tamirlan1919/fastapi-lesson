@@ -113,25 +113,99 @@ async def get_task(task_id: int,
 async def update_task(task_id: int,
                       task: TaskUpdate,
                       current_user: UserInDB = Depends(get_current_user),
-                      session: AsyncSession = Depends(get_async_session)
+                      session: AsyncSession = Depends(get_async_session),
+                      history_col: AsyncIOMotorCollection = Depends(get_task_history_collection),
+                      redis: Redis = Depends(get_redis)
                       ):
     repo = TaskRepository(session)
-    updated = await repo.update(task_id=task_id, owner_id=current_user.id, data=task)
-    if not updated:
+    
+    old_tasks = await repo.get_by_id(task_id=task_id, owner_id=current_user.id)
+    if not old_tasks:
         raise HTTPException(status_code=404, detail='Task not found')
+    
+    updated_field= task.model_dump(exclude_unset=True)
+    changes = {}
+    
+    for field, new_value in updated_field.items():
+        old_value = getattr(old_tasks, field)
+        if old_value != new_value:
+            changes[field] = {
+                'old': str(old_value) if old_value is not None else None,
+                'new': str(new_value) if new_value is not None else None,
+            }
+    
+    updated = await repo.update(task_id=task_id, owner_id=current_user.id, data=task)
+
+    try:
+        history = TaskHistory(history_col)
+        await history.log_updated(
+            task_id=updated.id,
+            user_id=current_user.id,
+            changes=changes
+        )
+    except Exception as e:
+        print(f'Warn task_history log failed: {e}')
+
+    await CacheService(redis).invalidate_tasks(current_user.id)
     return updated
 
 
 @router.delete('/{task_id}', status_code=204)
 async def delete_task(task_id: int,
                       current_user: UserInDB = Depends(get_current_user),
-                      session: AsyncSession = Depends(get_async_session)):
+                      session: AsyncSession = Depends(get_async_session),
+                      history_col: AsyncIOMotorCollection = Depends(get_task_history_collection),
+                      redis: Redis = Depends(get_redis)
+                      ):
     repo = TaskRepository(session)
+
+    task = await repo.get_by_id(task_id=task_id, owner_id=current_user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    snaphot = {
+        'title': task.title,
+        'description': task.description,
+        'priority': task.priority,
+        'is_done': task.is_done,
+        'deadline': str(task.deadline) if task.deadline else None,
+    }
+
     deleted = await repo.delete(task_id=task_id, owner_id=current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail='Task not found')
+    
+    try:
+        history= TaskHistory(history_col)
+        await history.log_deleted(
+            task_id=task_id,
+            user_id=current_user.id,
+            snaphot = snaphot
+        )
+    except Exception as e:
+        print(f'Warn task_history log failed: {e}')
+
+    await CacheService(redis).invalidate_tasks(current_user.id)
     return Response(status_code=204)
 
+@router.get('/{task_id}/history')
+async def get_task_history(
+                            task_id: int,
+                            limit: int = Query(50, ge=1, le=100),
+                            current_user: UserInDB = Depends(get_current_user),
+                            session: AsyncSession = Depends(get_async_session),
+                            history_col: AsyncIOMotorCollection = Depends(get_task_history_collection)
+):
+    
+    repo = TaskRepository(session)
 
-
-
+    task = await repo.get_by_id(task_id=task_id, owner_id=current_user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    history = TaskHistory(history_col)
+    return await history.get_task_history(
+        task_id=task_id,
+        user_id=current_user.id,
+        limit=limit
+    )
