@@ -24,13 +24,13 @@ async def login_for_access_token(
 ):
     client_ip = request.client.host
     cache = CacheService(redis)
-    allowed, attempts = await cache.check_login_rate_limit(client_ip)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f'Слишком много попыток. Попробуйте через минуту',
-            headers={'Retry-After': '60'}
-        )
+    # allowed, attempts = await cache.check_login_rate_limit(client_ip)
+    # if not allowed:
+    #     raise HTTPException(
+    #         status_code=429,
+    #         detail=f'Слишком много попыток. Попробуйте через минуту',
+    #         headers={'Retry-After': '60'}
+    #     )
 
     user = await authenticate_user(
         username=form_data.username,

@@ -1,14 +1,23 @@
-from pathlib import Path
+import os
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DATABASE_URL = f"sqlite+aiosqlite:///{BASE_DIR / 'lesson.db'}"
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "pass")
+POSTGRES_DATABASE = os.getenv("POSTGRES_DATABASE", "python_postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
-client = AsyncIOMotorClient('mongodb://localhost:27017')
+DATABASE_URL = (
+    f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+    f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DATABASE}"
+)
+
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+client = AsyncIOMotorClient(MONGO_URL)
 
 
 engine = create_async_engine(
@@ -34,4 +43,3 @@ async def get_async_session() -> AsyncSession:
 
 class Base(DeclarativeBase):
     pass
-

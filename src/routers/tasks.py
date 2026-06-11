@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from motor.motor_asyncio import AsyncIOMotorCollection
 from src.auth import get_current_user
 from src.database import get_async_session, get_task_history_collection
+from src.publisher import publish_export_task
 from src.repositories.tasks_repo import TaskRepository
 from src.repositories.task_history import TaskHistory
 from src.schemas import TaskResponse, TaskCreate, TaskUpdate, TaskToDone, UserInDB
@@ -98,6 +99,25 @@ async def create_task(task: TaskCreate,
         print(f'Warn task_history log failed: {e}')
     await CacheService(redis).invalidate_tasks(current_user.id)
     return created
+
+
+@router.post('/export')
+async def export_task(
+        fmt: str = Query('csv'),
+        current_user=Depends(get_current_user),
+
+):
+    await publish_export_task(
+        user_id=current_user.id,
+        fmt=fmt
+    )
+    return {
+        'status': 'queued',
+        'message': f'Экспорт в {fmt}',
+        'user_id': current_user.id
+
+
+    }
 
 
 @router.get('/{task_id}', response_model=TaskResponse)

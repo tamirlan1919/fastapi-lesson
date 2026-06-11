@@ -11,15 +11,17 @@ class UserRepository:
 
     async def create_user(self, username: str, email: str, hashed_password: str) -> User:
         try:
-            async with self.session.begin():
-                user = User(username=username, email=email, hashed_password=hashed_password)
-                self.session.add(user)
+            user = User(username=username, email=email, hashed_password=hashed_password)
+            self.session.add(user)
+            await self.session.flush()
+            await self.session.commit()
         except SQLAlchemyError as e:
+            await self.session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail='Ошибка создания пользователя'
             )
-        await self.session.refresh(user)  # Подтягиваем данные из бд
+        await self.session.refresh(user)
         return user
 
     async def get_all_users(self) -> list[User]:
@@ -42,16 +44,17 @@ class UserRepository:
 
     async def deactivate_user(self, user_id: int) -> User | None:
         user = await self.get_user_by_id(user_id)
+        if not user:
+            return None
         try:
-            if user:
-                async with self.session.begin():
-                    user.is_active = False
+            user.is_active = False
+            await self.session.flush()
+            await self.session.commit()
         except SQLAlchemyError as e:
+            await self.session.rollback()
             raise HTTPException(
                 status_code=500,
                 detail='Ошибка деактивации пользователя'
-
             )
-
         await self.session.refresh(user)
         return user
