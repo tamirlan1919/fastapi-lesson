@@ -1,5 +1,5 @@
 from celery import Celery
-from kombu import Queue
+from kombu import Queue, Exchange
 import os
 
 RABBIT_URL = os.getenv('RABBIT_URL', 'amqp://guest:guest@localhost')
@@ -14,7 +14,7 @@ celery_app = Celery(
 celery_app.conf.update(
     task_serializer='json',
     result_serializer='json',
-    accept_content='json',
+    accept_content=['json'],
     timezone='Europe/Moscow',
     enable_utc=True,
     worker_prefetch_multiplier=4,
@@ -23,15 +23,18 @@ celery_app.conf.update(
 
 )
 
+_celery_exchange = Exchange('celery', type='direct')
+
 celery_app.conf.task_queues = (
     Queue(
         'reports',
+        exchange=_celery_exchange,
+        routing_key='reports',
         durable=True,
         queue_arguments={
-            'x-max-priority': 10,
             'x-dead-letter-exchange': 'dlx',
             'x-dead-letter-routing-key': 'dead_letters',
             'x-message-ttl': 5 * 60 * 1000
         }
-    )
+    ),
 )

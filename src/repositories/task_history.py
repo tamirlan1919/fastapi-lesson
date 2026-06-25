@@ -51,7 +51,7 @@ class TaskHistory:
             return {}
         pipeline = [
             {'$match': {'task_id': {'$in': tasks_ids}}},
-            {'$sort': {'timestamp', -1}},
+            {'$sort': {'timestamp': -1}},
             {'$group': {'_id': '$task_id',
                         'last_event': {'$first': '$event'}}}
         ]

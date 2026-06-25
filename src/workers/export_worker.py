@@ -37,14 +37,14 @@ async def handle_export(message: AbstractIncomingMessage):
                 task.created_at
             ])
 
-            filename = EXPORT_DIR / f'user_{user_id}_tasks.{fmt}'
-            filename.write_text(output.getvalue(), encoding='utf-8')
+        filename = EXPORT_DIR / f'user_{user_id}_tasks.{fmt}'
+        filename.write_text(output.getvalue(), encoding='utf-8')
 
 
 async def main():
     conn = await get_rabbit_connection()
 
-    channel = conn.channel()
+    channel = await conn.channel()
     await channel.set_qos(prefetch_count=1)
     queue = await channel.declare_queue(Queues.TASK_EXPORT, durable=True)
     async with queue.iterator() as q:

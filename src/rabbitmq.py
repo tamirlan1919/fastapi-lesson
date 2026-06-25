@@ -2,7 +2,7 @@ import os
 import aio_pika
 from aio_pika.abc import AbstractRobustConnection
 
-RABBIT_URL = 'amqp://guest:guest@localhost'
+RABBIT_URL = os.getenv('RABBIT_URL', 'amqp://guest:guest@localhost')
 
 
 class Queues:

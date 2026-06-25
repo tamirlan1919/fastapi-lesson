@@ -115,3 +115,22 @@ def doc_to_response(doc: dict) -> NoteResponse:
         tags = doc.get('tags', []),
         created_at = doc.get('created_at')
     )
+
+
+class WeatherDescription(BaseModel):
+    main: str
+    description: str
+
+
+class MainWeatherData(BaseModel):
+    temp: float
+    feels_like: float
+    temp_min: float
+    temp_max: float
+    humidity: int
+
+
+class WeatherApiResponse(BaseModel):
+    weather: list[WeatherDescription]
+    main: MainWeatherData
+    name: str

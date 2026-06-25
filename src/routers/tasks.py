@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import List
 
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from motor.motor_asyncio import AsyncIOMotorCollection
 from src.auth import get_current_user
 from src.database import get_async_session, get_task_history_collection
-from src.publisher import publish_export_task
+from src.publisher import publish_report_task, publish_notify_task
 from src.repositories.tasks_repo import TaskRepository
 from src.repositories.task_history import TaskHistory
 from src.schemas import TaskResponse, TaskCreate, TaskUpdate, TaskToDone, UserInDB
@@ -14,7 +15,7 @@ from src.services.task_rules import validate_task_business_rules
 from redis.asyncio import Redis
 from src.redis_client import get_redis
 from src.services.cache_service import CacheService
-
+from src.services.yandex_disk_service import export_tasks_to_csv, export_tasks_to_json
 
 
 router = APIRouter(
@@ -95,29 +96,55 @@ async def create_task(task: TaskCreate,
                 'deadline': str(created.deadline) if created.deadline else None
             }
         )
+
     except Exception as e:
         print(f'Warn task_history log failed: {e}')
+
+    try:
+        task_id = await asyncio.wait_for(
+            publish_notify_task(
+                user_id=current_user.id,
+                email=current_user.email,
+                task_title=created.title,
+                event='создана'
+            ),
+            timeout=3.0
+        )
+        print(f'Уведомление посталвено в очреедь {task_id}')
+    except (asyncio.TimeoutError, Exception) as e:
+        print(f'Publish task failed: {e}')
     await CacheService(redis).invalidate_tasks(current_user.id)
     return created
 
 
-@router.post('/export')
-async def export_task(
-        fmt: str = Query('csv'),
-        current_user=Depends(get_current_user),
-
+@router.post('/report', status_code=201)
+async def require_report(
+        current_user: UserInDB = Depends(get_current_user),
+        session: AsyncSession = Depends(get_async_session)
 ):
-    await publish_export_task(
-        user_id=current_user.id,
-        fmt=fmt
-    )
+    repo = TaskRepository(session)
+    tasks = await repo.get_all_tasks_for_user(owner_id=current_user.id)
+    tasks_data = [
+        {
+            'id': t.id,
+            'title': t.title,
+            'priority': t.priority,
+            'is_done': t.is_done,
+            'created_at': str(t.created_at),
+            'deadline': str(t.deadline) if t.deadline else None
+        }
+        for t in tasks
+    ]
+    celery_task_id = await publish_report_task(current_user.id, tasks_data)
     return {
         'status': 'queued',
-        'message': f'Экспорт в {fmt}',
-        'user_id': current_user.id
-
-
+        'task_id': celery_task_id,
+        'tasks_count': len(tasks_data),
+        'flower_url': f'http://localhost:5555/task/{celery_task_id}'
     }
+
+
+
 
 
 @router.get('/{task_id}', response_model=TaskResponse)
@@ -153,5 +180,40 @@ async def delete_task(task_id: int,
     return Response(status_code=204)
 
 
+
+@router.post('/export/yandex/json', status_code=201)
+async def export_to_yandex_json(
+        current_user: UserInDB = Depends(get_current_user),
+        session: AsyncSession = Depends(get_async_session)
+):
+    repo = TaskRepository(session)
+    tasks = await repo.get_all_tasks_for_user(owner_id=current_user.id)
+    tasks_data = [
+        {
+            'id': t.id, 'title': t.title, 'priority': t.priority,
+            'is_done': t.is_done, 'created_at': str(t.created_at)
+        }
+        for t in tasks
+    ]
+    result = await export_tasks_to_json(tasks_data, current_user.id)
+    return  {'status': 'exported', **result}
+
+
+@router.post('/export/yandex/csv', status_code=201)
+async def export_to_yandex_csv(
+        current_user: UserInDB = Depends(get_current_user),
+        session: AsyncSession = Depends(get_async_session)
+):
+    repo = TaskRepository(session)
+    tasks = await repo.get_all_tasks_for_user(owner_id=current_user.id)
+    tasks_data = [
+        {
+            'id': t.id, 'title': t.title, 'priority': t.priority,
+            'is_done': t.is_done, 'created_at': str(t.created_at)
+        }
+        for t in tasks
+    ]
+    result = await export_tasks_to_csv(tasks_data, current_user.id)
+    return  {'status': 'exported', **result}
 
 

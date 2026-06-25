@@ -12,17 +12,18 @@ class TaskRepository:
         self.session = session
 
     async def create(self, task_data: TaskCreate, owner_id:  int) -> Task:
+        task = Task(
+            title=task_data.title,
+            description=task_data.description,
+            priority=task_data.priority,
+            is_done=task_data.is_done,
+            owner_id=owner_id
+        )
         try:
-            async with self.session.begin():
-                task = Task(
-                    title=task_data.title,
-                    description=task_data.description,
-                    priority=task_data.priority,
-                    is_done=task_data.is_done,
-                    owner_id=owner_id
-                    )
-                self.session.add(task)
+            self.session.add(task)
+            await self.session.commit()
         except SQLAlchemyError as e:
+            await self.session.rollback()
             raise HTTPException(
                 status_code=500,
                 detail='Ошибка создания задачи'

@@ -1,10 +1,11 @@
-import os
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 from src.auth import hash_password, get_current_user
 from src.database import get_async_session
 from src.schemas import UserCreate, UserResponse, UserInDB
 from src.repositories.users_repo import UserRepository
+
 
 router = APIRouter(
     prefix='/users',
@@ -57,3 +58,25 @@ async def get_users(
     repo = UserRepository(session)
     return await repo.get_user_by_id(user_id=current_user.id)
 
+
+
+#Подключение стороннего API
+
+
+@router.get('/external-users/{user_id}')
+async def get_external_user(user_id: int):
+    url = f'https://jsonplaceholder.typicode.com/users/{user_id}'
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail='Ошибка внешнего API')
+        return response.json()
+
+
+@router.post('/create-external-post')
+async def create_external_post(title: str, body: str):
+    url = 'https://jsonplaceholder.typicode.com/posts/'
+    payload = {'title': title, 'body': body}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload)
+    return {'status_code': response.status_code, "response_data": response.json()}

@@ -1,8 +1,8 @@
 from celery import Celery
-from kombu import Queue
+from kombu import Queue, Exchange
 import os
 
-RABBIT_URL = os.getenv('RABBIT_URL', 'ampq://guest:guest@localhost')
+RABBIT_URL = os.getenv('RABBIT_URL', 'amqp://guest:guest@localhost')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/1')
 
 celery_app = Celery(
@@ -14,7 +14,7 @@ celery_app = Celery(
 celery_app.conf.update(
     task_serializer='json',
     result_serializer='json',
-    accept_content='json',
+    accept_content=['json'],
     timezone='Europe/Moscow',
     enable_utc=True,
     worker_prefetch_multiplier=1,
@@ -23,9 +23,13 @@ celery_app.conf.update(
 
 )
 
+_celery_exchange = Exchange('celery', type='direct')
+
 celery_app.conf.task_queues = (
     Queue(
         'notification',
+        exchange=_celery_exchange,
+        routing_key='notification',
         durable=True,
         queue_arguments={
             'x-max-priority': 10,
@@ -36,16 +40,18 @@ celery_app.conf.task_queues = (
     ),
     Queue(
         'reports',
+        exchange=_celery_exchange,
+        routing_key='reports',
         durable=True,
         queue_arguments={
             'x-dead-letter-exchange': 'dlx',
             'x-dead-letter-routing-key': 'dead_letters',
-            'x-message-ttl': 30 * 60 * 1000
+            'x-message-ttl': 5 * 60 * 1000
         }
     )
 )
 
-celery_app.task_routers = {
-    'notification-service.notification_tasks.*': {'queue': 'notification'},
-    'reports-service.reports_tasks.*': {'queue': 'reports'},
+celery_app.conf.task_routes = {
+    'notification.tasks.*': {'queue': 'notification'},
+    'reports.tasks.*': {'queue': 'reports'},
 }
